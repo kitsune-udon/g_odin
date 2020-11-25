@@ -1,20 +1,38 @@
 import pytorch_lightning as pl
 import torch
-from torch.utils.data import DataLoader
-from torchvision.datasets import CIFAR10
+from torch.utils.data import DataLoader, Dataset
+from torchvision.datasets import CIFAR100, LSUN
 from torchvision.transforms.transforms import Compose, Normalize, ToTensor
 
 from argparse_utils import from_argparse_args
 
 
-def cifar10_collate_fn(batch):
+def cifar100_collate_fn(batch):
     images, labels = list(zip(*batch))
     images = torch.stack(images)
     labels = torch.tensor(labels)
     return images, labels
 
 
-class CIFAR10DataModule(pl.LightningDataModule):
+class ConcatDataset(Dataset):
+    def __init__(self, *args):
+        super().__init__()
+        self._ds = args
+
+    def __getitem__(self, index):
+        for d in self._ds:
+            if index < len(d):
+                return d[index]
+            else:
+                index -= len(d)
+
+        raise ValueError("invalid index")
+
+    def __len__(self):
+        return sum(map(len, self._ds))
+
+
+class ODINDataModule(pl.LightningDataModule):
     def __init__(self, dataset_root="./dataset",
                  train_batch_size=8, val_batch_size=8, num_workers=0):
         super().__init__()
@@ -31,27 +49,30 @@ class CIFAR10DataModule(pl.LightningDataModule):
         ])
 
     def prepare_data(self, *args, **kwargs):
-        CIFAR10(self.dataset_root, download=True)
+        CIFAR100(self.dataset_root, download=True)
 
     def train_dataloader(self, *args, **kwargs):
-        cifar10_train = CIFAR10(self.dataset_root, train=True,
-                                download=False, transform=self.transform)
+        cifar100_train = CIFAR100(self.dataset_root, train=True,
+                                  download=False, transform=self.transform)
 
-        return DataLoader(cifar10_train,
+        return DataLoader(cifar100_train,
                           shuffle=True,
                           num_workers=self.num_workers,
                           batch_size=self.train_batch_size,
-                          collate_fn=cifar10_collate_fn)
+                          collate_fn=cifar100_collate_fn)
 
     def val_dataloader(self, *args, **kwargs):
-        cifar10_val = CIFAR10(self.dataset_root, train=False,
-                              download=False, transform=self.transform)
+        cifar100_val = CIFAR100(self.dataset_root, train=False,
+                                download=False, transform=self.transform,
+                                target_transform=lambda _: 0)
+        lsun_val = LSUN(self.dataset_root, classes='val',
+                        transform=self.transform, target_transform=lambda _: 1)
+        dataset = ConcatDataset(cifar100_val, lsun_val)
 
-        return DataLoader(cifar10_val,
+        return DataLoader(dataset,
                           shuffle=False,
                           num_workers=self.num_workers,
-                          batch_size=self.val_batch_size,
-                          collate_fn=cifar10_collate_fn)
+                          batch_size=self.val_batch_size)
 
     @staticmethod
     def add_argparse_args(parser):
