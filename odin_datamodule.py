@@ -2,7 +2,8 @@ import pytorch_lightning as pl
 import torch
 from torch.utils.data import DataLoader, Dataset
 from torchvision.datasets import CIFAR100, LSUN
-from torchvision.transforms.transforms import Compose, Normalize, ToTensor
+from torchvision.transforms.transforms import (CenterCrop, Compose, Normalize,
+                                               Resize, ToTensor)
 
 from argparse_utils import from_argparse_args
 
@@ -47,6 +48,13 @@ class ODINDataModule(pl.LightningDataModule):
             Normalize(mean=(0.485, 0.456, 0.406),
                       std=(0.229, 0.224, 0.225))
         ])
+        self.lsun_transform = Compose([
+            Resize(32),
+            CenterCrop(32),
+            ToTensor(),
+            Normalize(mean=(0.485, 0.456, 0.406),
+                      std=(0.229, 0.224, 0.225))
+        ])
 
     def prepare_data(self, *args, **kwargs):
         CIFAR100(self.dataset_root, download=True)
@@ -65,9 +73,10 @@ class ODINDataModule(pl.LightningDataModule):
         cifar100_val = CIFAR100(self.dataset_root, train=False,
                                 download=False, transform=self.transform,
                                 target_transform=lambda _: 0)
-        lsun_val = LSUN(self.dataset_root, classes='val',
-                        transform=self.transform, target_transform=lambda _: 1)
-        dataset = ConcatDataset(cifar100_val, lsun_val)
+        lsun_test = LSUN(self.dataset_root, classes='test',
+                         transform=self.lsun_transform,
+                         target_transform=lambda _: 1)
+        dataset = ConcatDataset(cifar100_val, lsun_test)
 
         return DataLoader(dataset,
                           shuffle=False,
