@@ -50,5 +50,5 @@ class Sampler:
 def tnr_at_tpr95(score, label):
     de = DE(Fitness(score, label), Sampler(), np=8)
     crit, max_fitness = de.fit()
-    print(f"crit:{crit}, max_fitness:{max_fitness}")
-    return max_fitness
+
+    return crit, max_fitness

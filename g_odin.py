@@ -2,8 +2,7 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from pl_bolts.optimizers import LARSWrapper, LinearWarmupCosineAnnealingLR
-from torch.optim import SGD
+from torch.optim import AdamW
 from torchvision.models.densenet import densenet121
 
 from argparse_utils import from_argparse_args
@@ -46,7 +45,7 @@ class GODIN(pl.LightningModule):
 
     def calc_loss(self, x, label):
         y = F.log_softmax(self(x), dim=1)
-        loss = F.nll_loss(y, label).mean()
+        loss = F.nll_loss(y, label)
 
         return loss
 
@@ -71,26 +70,22 @@ class GODIN(pl.LightningModule):
     def validation_epoch_end(self, outputs):
         score = torch.cat([o['score'] for o in outputs]).cpu().numpy()
         label = torch.cat([o['label'] for o in outputs]).cpu().numpy()
-        logs = {'val_acc': torch.tensor(tnr_at_tpr95(score, label))}
+        crit, fitness = tnr_at_tpr95(score, label)
+        logs = {
+            'val_acc': torch.tensor(fitness),
+            'criteria': torch.tensor(crit)
+        }
+
         results = {'log': logs}
 
         return results
 
     def configure_optimizers(self):
-        optimizer = SGD(self.parameters(),
-                        lr=self.hparams.learning_rate,
-                        momentum=0.9,
-                        weight_decay=self.hparams.weight_decay)
-        optimizer = LARSWrapper(optimizer)
+        optimizer = AdamW(self.parameters(),
+                          lr=self.hparams.learning_rate,
+                          weight_decay=self.hparams.weight_decay)
 
-        scheduler = LinearWarmupCosineAnnealingLR(
-            optimizer,
-            warmup_epochs=self.hparams.warmup_epochs,
-            max_epochs=self.hparams.max_epochs,
-            warmup_start_lr=0.001
-        )
-
-        return [optimizer], [scheduler]
+        return optimizer
 
     @classmethod
     def from_argparse_args(cls, args, **kwargs):
@@ -98,8 +93,8 @@ class GODIN(pl.LightningModule):
 
     @staticmethod
     def add_argparse_args(parser):
-        parser.add_argument('--learning_rate', type=float, default=0.1)
-        parser.add_argument('--weight_decay', type=float, default=5e-4)
+        parser.add_argument('--learning_rate', type=float, default=0.001)
+        parser.add_argument('--weight_decay', type=float, default=0.01)
         parser.add_argument('--warmup_epochs', type=int, default=10)
 
         return parser
