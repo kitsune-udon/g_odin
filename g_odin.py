@@ -13,7 +13,6 @@ from metric import tnr_at_tpr95
 class GODIN(pl.LightningModule):
     def __init__(self,
                  *args,
-                 dim=None,
                  learning_rate=None,
                  weight_decay=None,
                  warmup_epochs=None,
@@ -24,15 +23,21 @@ class GODIN(pl.LightningModule):
         self.save_hyperparameters()
         self.net = densenet121()
         self.net.classifier = nn.Identity()
-        num_features = 64
-        self.bn_g = nn.BatchNorm1d(num_features)
+        num_features = 1024
+        self.bn_g = nn.BatchNorm1d(1)
         self.linear_h = nn.Linear(num_features, 100, bias=False)
+        self.linear_g = nn.Linear(num_features, 1)
 
     def get_gh(self, x):
         t = self.net(x)
-        g = F.sigmoid(self.bn_g(t))
-        norm = self.linear_h.weight.norm(dim=1) * t.norm(p=2, dim=1)
+        g = torch.sigmoid(self.bn_g(self.linear_g(t)))
+
+        w_norm = self.linear_h.weight.norm(dim=1).unsqueeze(0)
+        t_norm = t.norm(p=2, dim=1).unsqueeze(1)
+
+        norm = t_norm * w_norm
         h = self.linear_h(t) / norm
+
         return h, g
 
     def forward(self, x):
@@ -41,13 +46,13 @@ class GODIN(pl.LightningModule):
 
     def calc_loss(self, x, label):
         y = F.log_softmax(self(x), dim=1)
-        loss = F.nll_loss(y, label)
+        loss = F.nll_loss(y, label).mean()
 
         return loss
 
     def score(self, x):
         h, _ = self.get_gh(x)
-        return h.max(dim=1)
+        return h.max(dim=1).values
 
     def training_step(self, batch, batch_idx):
         x, label = batch
@@ -66,7 +71,7 @@ class GODIN(pl.LightningModule):
     def validation_epoch_end(self, outputs):
         score = torch.cat([o['score'] for o in outputs]).cpu().numpy()
         label = torch.cat([o['label'] for o in outputs]).cpu().numpy()
-        logs = {'val_acc': tnr_at_tpr95(score, label)}
+        logs = {'val_acc': torch.tensor(tnr_at_tpr95(score, label))}
         results = {'log': logs}
 
         return results

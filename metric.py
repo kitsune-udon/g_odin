@@ -7,15 +7,23 @@ from de import DE
 def tnr(crit, score, label):
     b = 1 - (score < crit)
     tn_fp = (label == 0).sum()
-    tn = ((b * label) == 0).sum()
-    return (tn / tn_fp) * 100
+    tn = (((1 - b) * (1 - label)) == 1).sum()
+
+    if tn_fp > 0:
+        return (tn / tn_fp) * 100
+    else:
+        return 0
 
 
 def tpr(crit, score, label):
     b = 1 - (score < crit)
     tp_fn = (label == 1).sum()
     tp = ((b * label) == 1).sum()
-    return (tp / tp_fn) * 100
+
+    if tp_fn > 0:
+        return (tp / tp_fn) * 100
+    else:
+        return 0
 
 
 class Fitness:
@@ -41,5 +49,6 @@ class Sampler:
 
 def tnr_at_tpr95(score, label):
     de = DE(Fitness(score, label), Sampler(), np=8)
-    _, max_fitness = de.fit()
+    crit, max_fitness = de.fit()
+    print(f"crit:{crit}, max_fitness:{max_fitness}")
     return max_fitness
