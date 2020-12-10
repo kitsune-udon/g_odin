@@ -1,7 +1,8 @@
 import random
 from functools import lru_cache
 
-from sklearn.metrics import roc_auc_score
+import numpy as np
+from sklearn.metrics import roc_auc_score, roc_curve
 
 from de import DE
 
@@ -55,7 +56,43 @@ def tnr_at_tpr95(score, label):
     return crit, max_fitness
 
 
-def auroc(score, label):
+def auroc(score, label, file_out=False):
     if (label == 0).all() or (label == 1).all():
         return 0
+    if file_out:
+        fpr, tpr, thresholds = roc_curve(label, -score)
+        np.savetxt('fpr', fpr)
+        np.savetxt('tpr', tpr)
+        np.savetxt('thresholds', thresholds)
     return roc_auc_score(label, -score)
+
+
+def my_auroc(score, label):
+    return 0.5
+
+
+def test_myauroc():
+    def draw_data():
+        n_samples = 1000
+        score = np.linspace(-1, 2, n_samples)
+        np.random.shuffle(score)
+        label = np.random.randint(0, 2, n_samples)
+
+        return [(score, label)]
+
+    data = draw_data()
+    for d in data:
+        score, label = d
+        v0 = auroc(score, label)
+        v1 = my_auroc(score, label)
+        print(f"sk_auroc: {v0}, my_auroc: {v1}")
+
+
+def auroc_from_file():
+    score = np.loadtxt('score')
+    label = np.loadtxt('label')
+    print(f"auroc: {auroc(score, label)}")
+
+
+if __name__ == '__main__':
+    auroc_from_file()

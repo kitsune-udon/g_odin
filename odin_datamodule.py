@@ -1,8 +1,14 @@
+import os
+
+import numpy as np
 import pytorch_lightning as pl
 import torch
+from PIL import Image
 from torch.utils.data import DataLoader, Dataset
-from torchvision.datasets import CIFAR10, LSUN
-from torchvision.transforms.transforms import (CenterCrop, Compose, Normalize,
+from torchvision.datasets import CIFAR10
+from torchvision.transforms.transforms import (CenterCrop, ColorJitter,
+                                               Compose, Normalize,
+                                               RandomAffine, RandomGrayscale,
                                                Resize, ToTensor)
 
 from argparse_utils import from_argparse_args
@@ -13,6 +19,50 @@ def cifar10_collate_fn(batch):
     images = torch.stack(images)
     labels = torch.tensor(labels)
     return images, labels
+
+
+class LSUNResize(Dataset):
+    def __init__(self, dataset_root='.', length=10000, transform=None):
+        super().__init__()
+        self.dataset_root = dataset_root
+        self.length = length
+        self.transform = transform
+        self._set_path()
+
+    def _set_path(self):
+        self.imagefile_path = os.path.join(self.dataset_root,
+                                           'LSUN_resize')
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):
+        filepath = f"{index}.jpg"
+        filepath = os.path.join(self.imagefile_path,
+                                filepath)
+        img = Image.open(filepath)
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        return img, int(1)
+
+
+class UniformDataset(Dataset):
+    def __init__(self, image_size, length):
+        super().__init__()
+        self.image_size = image_size
+        self.length = length
+
+    def __getitem__(self, index):
+        image = np.random.rand(3, self.image_size, self.image_size)
+        image = torch.tensor(image, dtype=torch.float)
+        label = 1
+
+        return image, label
+
+    def __len__(self):
+        return self.length
 
 
 class ConcatDataset(Dataset):
@@ -43,17 +93,28 @@ class ODINDataModule(pl.LightningDataModule):
         self.val_batch_size = val_batch_size
         self.num_workers = num_workers
 
+        mean = (125.3/255, 123.0/255, 113.9/255)
+        std = (63.0/255, 62.1/255, 66.7/255)
+
         self.transform = Compose([
+            ColorJitter(brightness=0.1,
+                        contrast=0.1,
+                        saturation=0.1,
+                        hue=0
+                        ),
+            RandomGrayscale(p=0.1),
+            RandomAffine(degrees=15,
+                         scale=(0.9, 1.1),
+                         resample=Image.BILINEAR
+                         ),
             ToTensor(),
-            Normalize(mean=(0.485, 0.456, 0.406),
-                      std=(0.229, 0.224, 0.225))
+            Normalize(mean=mean,
+                      std=std)
         ])
         self.lsun_transform = Compose([
-            Resize(32),
-            CenterCrop(32),
             ToTensor(),
-            Normalize(mean=(0.485, 0.456, 0.406),
-                      std=(0.229, 0.224, 0.225))
+            Normalize(mean=mean,
+                      std=std)
         ])
 
     def prepare_data(self, *args, **kwargs):
@@ -73,10 +134,10 @@ class ODINDataModule(pl.LightningDataModule):
         cifar10_val = CIFAR10(self.dataset_root, train=False,
                               download=False, transform=self.transform,
                               target_transform=lambda _: 0)
-        lsun_test = LSUN(self.dataset_root, classes='test',
-                         transform=self.lsun_transform,
-                         target_transform=lambda _: 1)
-        dataset = ConcatDataset(cifar10_val, lsun_test)
+        lsun_resize = LSUNResize(
+            self.dataset_root, transform=self.lsun_transform)
+
+        dataset = ConcatDataset(cifar10_val, lsun_resize)
 
         return DataLoader(dataset,
                           shuffle=False,
