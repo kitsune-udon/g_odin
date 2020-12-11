@@ -6,10 +6,7 @@ import torch
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 from torchvision.datasets import CIFAR10
-from torchvision.transforms.transforms import (CenterCrop, ColorJitter,
-                                               Compose, Normalize,
-                                               RandomAffine, RandomGrayscale,
-                                               Resize, ToTensor)
+from torchvision.transforms.transforms import Compose, Normalize, ToTensor
 
 from argparse_utils import from_argparse_args
 
@@ -97,16 +94,6 @@ class ODINDataModule(pl.LightningDataModule):
         std = (63.0/255, 62.1/255, 66.7/255)
 
         self.transform = Compose([
-            ColorJitter(brightness=0.1,
-                        contrast=0.1,
-                        saturation=0.1,
-                        hue=0
-                        ),
-            RandomGrayscale(p=0.1),
-            RandomAffine(degrees=15,
-                         scale=(0.9, 1.1),
-                         resample=Image.BILINEAR
-                         ),
             ToTensor(),
             Normalize(mean=mean,
                       std=std)
